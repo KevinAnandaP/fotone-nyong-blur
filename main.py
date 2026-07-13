@@ -1,16 +1,13 @@
 import cv2
 import numpy as np
 import math
-import time
 import os
-import sys
 import urllib.request
 import ctypes
 import mediapipe as mp
 
 try:
     try:
-        # Gunakan ucrtbase (Universal CRT) yang digunakan Python 3.14 untuk menghindari heap mismatch/deadlock
         crt = ctypes.CDLL('ucrtbase')
         dummy_free = crt.free
     except Exception:
@@ -40,29 +37,44 @@ HAND_MODEL_PATH = "hand_landmarker.task"
 SEG_MODEL_PATH = "selfie_segmenter.tflite"
 
 def download_file(path, url):
+    """Mengunduh file model AI dari Google Storage jika tidak ada di direktori lokal."""
     if not os.path.exists(path):
         try:
+            print(f"Mengunduh model AI ({path})... Harap tunggu.")
             urllib.request.urlretrieve(url, path)
-        except Exception:
-            pass
+            print(f"Selesai mengunduh {path}.")
+        except Exception as e:
+            print(f"Gagal mengunduh {path}: {e}")
 
 download_file(HAND_MODEL_PATH, HAND_MODEL_URL)
 download_file(SEG_MODEL_PATH, SEG_MODEL_URL)
 
 base_hand = mp_python.BaseOptions(model_asset_path=HAND_MODEL_PATH)
-options_hand = vision.HandLandmarkerOptions(base_options=base_hand, num_hands=2, min_hand_detection_confidence=0.7)
+options_hand = vision.HandLandmarkerOptions(
+    base_options=base_hand, 
+    num_hands=2, 
+    min_hand_detection_confidence=0.7
+)
 landmarker = vision.HandLandmarker.create_from_options(options_hand)
 
 base_seg = mp_python.BaseOptions(model_asset_path=SEG_MODEL_PATH)
-options_seg = vision.ImageSegmenterOptions(base_options=base_seg, output_category_mask=False, output_confidence_masks=True)
+options_seg = vision.ImageSegmenterOptions(
+    base_options=base_seg, 
+    output_category_mask=False, 
+    output_confidence_masks=True
+)
 segmenter = vision.ImageSegmenter.create_from_options(options_seg)
 
 def calculate_distance(p1, p2):
+    """Menghitung jarak Euclidean antara dua koordinat landmark."""
     return math.hypot(p1.x - p2.x, p1.y - p2.y)
 
 def is_peace_sign(landmarks):
     """
-    Mendeteksi gestur jari 'peace' / V-sign dengan AI Landmarks presisi tinggi.
+    Mengecek apakah koordinat jari tangan membentuk gestur Peace (2 jari).
+    Kriteria:
+    - Jari Telunjuk & Jari Tengah tegak terangkat.
+    - Jari Manis & Jari Kelingking terlipat ke bawah.
     """
     wrist = landmarks[0]
     
@@ -93,7 +105,6 @@ def main():
     if not cap.isOpened():
         return
 
-    # Menggunakan codec MJPG untuk memastikan output HD (1920x1080) berjalan lancar
     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
@@ -143,15 +154,12 @@ def main():
                 effective_mask = seg_mask_3d * current_blur_factor
                 frame = (frame * (1.0 - effective_mask) + blurred_full_frame * effective_mask).astype(np.uint8)
 
-        # Tampilkan frame bersih di window
         cv2.imshow(window_name, frame)
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q') or key == 27:
             break
 
-        # Cek jika window ditutup oleh pengguna (menekan tombol X)
-        # Harus dipanggil setelah cv2.waitKey agar sistem OS memproses event penutupan window terlebih dahulu
         if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
             break
 
