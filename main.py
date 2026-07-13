@@ -10,10 +10,15 @@ import mediapipe as mp
 
 try:
     try:
-        msvcrt = ctypes.CDLL('msvcrt')
-        dummy_free = msvcrt.free
+        # Gunakan ucrtbase (Universal CRT) yang digunakan Python 3.14 untuk menghindari heap mismatch/deadlock
+        crt = ctypes.CDLL('ucrtbase')
+        dummy_free = crt.free
     except Exception:
-        dummy_free = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(lambda p: None)
+        try:
+            crt = ctypes.CDLL('msvcrt')
+            dummy_free = crt.free
+        except Exception:
+            dummy_free = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(lambda p: None)
 
     orig_cdll_getattr = ctypes.CDLL.__getattr__
     def patched_cdll_getattr(self, name):
@@ -88,6 +93,8 @@ def main():
     if not cap.isOpened():
         return
 
+    # Menggunakan codec MJPG untuk memastikan output HD (1920x1080) berjalan lancar
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 
@@ -96,7 +103,7 @@ def main():
     cv2.resizeWindow(window_name, 1280, 720)
 
     current_blur_factor = 0.0
-    fade_speed = 0.08
+    fade_speed = 0.20
 
     while cap.isOpened():
         success, frame = cap.read()
@@ -136,10 +143,16 @@ def main():
                 effective_mask = seg_mask_3d * current_blur_factor
                 frame = (frame * (1.0 - effective_mask) + blurred_full_frame * effective_mask).astype(np.uint8)
 
+        # Tampilkan frame bersih di window
         cv2.imshow(window_name, frame)
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q') or key == 27:
+            break
+
+        # Cek jika window ditutup oleh pengguna (menekan tombol X)
+        # Harus dipanggil setelah cv2.waitKey agar sistem OS memproses event penutupan window terlebih dahulu
+        if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
             break
 
     cap.release()
